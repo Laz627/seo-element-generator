@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import re
 from urllib.parse import quote_plus
+from docx import Document
+from io import BytesIO
 
 # Set page title and creator info
 st.set_page_config(page_title="SEO Element Generator", layout="wide")
@@ -18,7 +20,7 @@ st.markdown("""
 2. Input up to 10 target keywords (one per line).
 3. Click 'Generate SEO Elements' to get recommendations.
 4. Review the results and explanations.
-5. Download the results as a CSV file.
+5. Download the results as a CSV file or Word document.
 """)
 
 # Input for OpenAI API key
@@ -72,6 +74,7 @@ def summarize_competitor_elements(results):
     
     return summary
 
+# Function to generate SEO elements using GPT-4
 def generate_seo_elements(keyword, competitor_summary, api_key):
     client = OpenAI(api_key=api_key)
     
@@ -103,6 +106,20 @@ def generate_seo_elements(keyword, competitor_summary, api_key):
     )
     
     return response.choices[0].message.content
+
+# Function to create Word document
+def create_word_document(results):
+    doc = Document()
+    doc.add_heading('SEO Element Generator Results', 0)
+
+    for result in results:
+        doc.add_heading(f"Keyword: {result['Keyword']}", level=1)
+        doc.add_paragraph(result['SEO Elements'])
+        doc.add_heading("Competitor Analysis Summary", level=2)
+        doc.add_paragraph(result['Competitor Summary'])
+        doc.add_paragraph("\n")  # Add a blank line between results
+
+    return doc
 
 # Input for keywords
 keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
@@ -139,6 +156,17 @@ if st.button("Generate SEO Elements") and api_key and keyword_list:
         data=csv,
         file_name="seo_elements_results.csv",
         mime="text/csv"
+    )
+
+    # Create and offer Word document download
+    doc = create_word_document(results)
+    bio = BytesIO()
+    doc.save(bio)
+    st.download_button(
+        label="Download results as Word Document",
+        data=bio.getvalue(),
+        file_name="seo_elements_results.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 else:
     st.write("Please enter your OpenAI API key and at least one keyword to generate SEO elements.")
