@@ -2,7 +2,6 @@ import streamlit as st
 from openai import OpenAI
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
 import re
 from urllib.parse import quote_plus
 from docx import Document
@@ -20,11 +19,8 @@ st.markdown("""
 2. Input up to 10 target keywords (one per line).
 3. Click 'Generate SEO Elements' to get recommendations.
 4. Review the results and explanations.
-5. Download the results as a CSV file or Word document.
+5. Download the results as a Word document.
 """)
-
-# Input for OpenAI API key
-api_key = st.text_input("Enter your OpenAI API key:", type="password")
 
 # Function to scrape Google search results
 def scrape_google_results(keyword, num_results=10):
@@ -95,6 +91,12 @@ def generate_seo_elements(keyword, competitor_summary, api_key):
     Based on the competitor analysis, create SEO elements that are very similar to the competitors' approach, while still being unique. Focus on common phrases, structures, and themes used by competitors.
     
     Provide brief explanations for your choices, highlighting how they align with competitor trends.
+    
+    Also, provide a summary of competitor elements, including:
+    1. Most common title structures
+    2. Common themes in meta descriptions
+    3. Frequently used phrases or keywords
+    4. Any notable patterns in how competitors present information
     """
     
     response = client.chat.completions.create(
@@ -114,12 +116,15 @@ def create_word_document(results):
 
     for result in results:
         doc.add_heading(f"Keyword: {result['Keyword']}", level=1)
-        doc.add_paragraph(result['SEO Elements'])
-        doc.add_heading("Competitor Analysis Summary", level=2)
-        doc.add_paragraph(result['Competitor Summary'])
+        doc.add_paragraph(result['SEO Elements and Competitor Summary'])
+        doc.add_heading("Competitor Analysis", level=2)
+        doc.add_paragraph(result['Competitor Analysis'])
         doc.add_paragraph("\n")  # Add a blank line between results
 
     return doc
+
+# Input for OpenAI API key
+api_key = st.text_input("Enter your OpenAI API key:", type="password")
 
 # Input for keywords
 keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
@@ -144,19 +149,9 @@ if st.button("Generate SEO Elements") and api_key and keyword_list:
         
         results.append({
             "Keyword": keyword,
-            "SEO Elements": seo_elements,
-            "Competitor Summary": competitor_summary
+            "SEO Elements and Competitor Summary": seo_elements,
+            "Competitor Analysis": competitor_summary
         })
-    
-    # Create a DataFrame and offer CSV download
-    df = pd.DataFrame(results)
-    csv = df.to_csv(index=False)
-    st.download_button(
-        label="Download results as CSV",
-        data=csv,
-        file_name="seo_elements_results.csv",
-        mime="text/csv"
-    )
 
     # Create and offer Word document download
     doc = create_word_document(results)
