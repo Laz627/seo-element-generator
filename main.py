@@ -141,7 +141,7 @@ def generate_seo_elements(keyword, competitor_summary, api_key, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
                     {"role": "user", "content": prompt}
