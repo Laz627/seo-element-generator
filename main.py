@@ -1,5 +1,5 @@
 import streamlit as st
-import openai
+from openai import OpenAI
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
@@ -58,7 +58,7 @@ def summarize_competitor_elements(results):
     return summary
 
 # Function to generate SEO elements using GPT-4
-def generate_seo_elements(keyword, competitor_summary):
+def generate_seo_elements(keyword, competitor_summary, api_key):
     client = OpenAI(api_key=api_key)
     
     prompt = f"""
@@ -102,7 +102,7 @@ if st.button("Generate SEO Elements") and api_key and keyword_list:
             competitor_summary = summarize_competitor_elements(competitor_results)
         
         with st.spinner(f"Generating SEO elements for '{keyword}'..."):
-            seo_elements = generate_seo_elements(keyword, competitor_summary)
+            seo_elements = generate_seo_elements(keyword, competitor_summary, api_key)
         
         st.write(seo_elements)
         st.write("Competitor Analysis Summary:")
