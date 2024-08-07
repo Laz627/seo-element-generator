@@ -59,7 +59,7 @@ def summarize_competitor_elements(results):
 
 # Function to generate SEO elements using GPT-4
 def generate_seo_elements(keyword, competitor_summary):
-    openai.api_key = api_key
+    client = OpenAI(api_key=api_key)
     
     prompt = f"""
     Generate an H1, title tag, and meta description for the keyword: "{keyword}"
@@ -77,7 +77,7 @@ def generate_seo_elements(keyword, competitor_summary):
     Provide explanations for your choices.
     """
     
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements."},
