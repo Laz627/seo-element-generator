@@ -53,11 +53,18 @@ def summarize_competitor_elements(results):
     summary += f"Average snippet length: {sum(len(snippet) for snippet in snippets) / len(snippets):.1f} characters.\n"
     
     common_words = set.intersection(*[set(re.findall(r'\w+', title.lower())) for title in titles])
-    summary += f"Common words in titles: {', '.join(list(common_words)[:5])}\n"
+    summary += f"Common words in titles: {', '.join(list(common_words)[:5])}\n\n"
+    
+    summary += "Sample competitor titles:\n"
+    for title in titles[:5]:
+        summary += f"- {title}\n"
+    
+    summary += "\nSample competitor snippets:\n"
+    for snippet in snippets[:5]:
+        summary += f"- {snippet[:100]}...\n"
     
     return summary
 
-# Function to generate SEO elements using GPT-4
 def generate_seo_elements(keyword, competitor_summary, api_key):
     client = OpenAI(api_key=api_key)
     
@@ -67,14 +74,16 @@ def generate_seo_elements(keyword, competitor_summary, api_key):
     Requirements:
     - H1 and title tag should be 70 characters or less
     - Meta description should be 155 characters or less
-    - Avoid AI filler words like "cracking the code" or "topic demystified"
-    - Omit branded terms
+    - Avoid buzzwords, AI filler words, and branded terms
     - Include an exact match or close variation of the target keyword
+    - Consider the competitor analysis provided below and incorporate insights from it
     
     Competitor analysis:
     {competitor_summary}
     
-    Provide explanations for your choices.
+    Based on the competitor analysis, create unique, informative, and engaging SEO elements that stand out while addressing the user's search intent.
+    
+    Provide explanations for your choices, including how they relate to the competitor analysis.
     """
     
     response = client.chat.completions.create(
