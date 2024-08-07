@@ -146,7 +146,7 @@ def generate_seo_elements(keyword, competitor_summary, api_key, max_retries=3):
                     {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.3
             )
             return response.choices[0].message.content
         except Exception as e:
