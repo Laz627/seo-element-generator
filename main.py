@@ -52,8 +52,15 @@ def summarize_competitor_elements(results):
     summary += f"Average title length: {sum(len(title) for title in titles) / len(titles):.1f} characters.\n"
     summary += f"Average snippet length: {sum(len(snippet) for snippet in snippets) / len(snippets):.1f} characters.\n"
     
-    common_words = set.intersection(*[set(re.findall(r'\w+', title.lower())) for title in titles])
-    summary += f"Common words in titles: {', '.join(list(common_words)[:5])}\n\n"
+    # Count word frequencies
+    word_freq = {}
+    for title in titles:
+        for word in re.findall(r'\w+', title.lower()):
+            if len(word) > 3:  # Ignore short words
+                word_freq[word] = word_freq.get(word, 0) + 1
+    
+    common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
+    summary += f"Common words in titles: {', '.join([word for word, _ in common_words])}\n\n"
     
     summary += "Sample competitor titles:\n"
     for title in titles[:5]:
@@ -74,22 +81,23 @@ def generate_seo_elements(keyword, competitor_summary, api_key):
     Requirements:
     - H1 and title tag should be 70 characters or less
     - Meta description should be 155 characters or less
-    - Avoid buzzwords, AI filler words, and branded terms
+    - Avoid buzzwords and branded terms
     - Include an exact match or close variation of the target keyword
-    - Consider the competitor analysis provided below and incorporate insights from it
+    - Closely align with the competitor results provided below
+    - The elements should be a summarization of common elements from the top 10 competitors
     
     Competitor analysis:
     {competitor_summary}
     
-    Based on the competitor analysis, create unique, informative, and engaging SEO elements that stand out while addressing the user's search intent.
+    Based on the competitor analysis, create SEO elements that are very similar to the competitors' approach, while still being unique. Focus on common phrases, structures, and themes used by competitors.
     
-    Provide explanations for your choices, including how they relate to the competitor analysis.
+    Provide brief explanations for your choices, highlighting how they align with competitor trends.
     """
     
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements."},
+            {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
             {"role": "user", "content": prompt}
         ]
     )
