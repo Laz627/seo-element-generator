@@ -6,6 +6,7 @@ import re
 from urllib.parse import quote_plus
 from docx import Document
 from io import BytesIO
+import time
 
 # Set page title and creator info
 st.set_page_config(page_title="SEO Element Generator", layout="wide")
@@ -71,7 +72,7 @@ def summarize_competitor_elements(results):
     return summary
 
 # Function to generate SEO elements using GPT-4
-def generate_seo_elements(keyword, competitor_summary, api_key):
+def generate_seo_elements(keyword, competitor_summary, api_key, max_retries=3):
     client = OpenAI(api_key=api_key)
     
     prompt = f"""
@@ -90,24 +91,68 @@ def generate_seo_elements(keyword, competitor_summary, api_key):
     
     Based on the competitor analysis, create SEO elements that are very similar to the competitors' approach, while still being unique. Focus on common phrases, structures, and themes used by competitors.
     
-    Provide brief explanations for your choices, highlighting how they align with competitor trends.
-    
-    Also, provide a summary of competitor elements, including:
-    1. Most common title structures
-    2. Common themes in meta descriptions
-    3. Frequently used phrases or keywords
-    4. Any notable patterns in how competitors present information
+    Please provide your response in the following structure:
+
+    COMPETITOR ELEMENTS SUMMARY
+    1. Most Common Title Structures:
+       - [Point 1]
+       - [Point 2]
+       ...
+
+    2. Common Themes in Meta Descriptions:
+       - [Point 1]
+       - [Point 2]
+       ...
+
+    3. Frequently Used Phrases or Keywords:
+       - [Phrase 1]
+       - [Phrase 2]
+       ...
+
+    4. Notable Patterns in Competitor Information Presentation:
+       - [Pattern 1]
+       - [Pattern 2]
+       ...
+
+    SEO ELEMENTS
+
+    H1: [Your H1]
+
+    Explanation:
+    - [Point 1]
+    - [Point 2]
+    ...
+
+    Title Tag: [Your Title Tag]
+
+    Explanation:
+    - [Point 1]
+    - [Point 2]
+    ...
+
+    Meta Description: [Your Meta Description]
+
+    Explanation:
+    - [Point 1]
+    - [Point 2]
+    ...
     """
     
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    
-    return response.choices[0].message.content
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2 ** attempt)  # Exponential backoff
 
 # Function to create Word document
 def create_word_document(results):
