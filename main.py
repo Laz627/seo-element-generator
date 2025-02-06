@@ -36,28 +36,32 @@ keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
 # ----------------------------
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
-def scrape_google_results(keyword, username, password, num_results=10):
+def scrape_google_results(keyword, username, password, limit=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
+    # Removed the unsupported "num" field.
     payload = [{
         "keyword": keyword,
-        "language_code": "en",   # Adjust if needed
-        "location_code": 2840,   # Example: 2840 corresponds to the United States
-        "device": "desktop",     # Options: "desktop" or "mobile"
-        "num": num_results
+        "language_code": "en",   # Adjust if needed.
+        "location_code": 2840,   # Example: 2840 corresponds to the United States.
+        "device": "desktop"      # Options: "desktop" or "mobile".
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
     data = response.json()
     
     results = []
+    # Loop through the returned data and filter for traditional organic items.
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
+                # If the API includes a type field, include only organic items.
+                if "type" in item and item["type"] != "organic":
+                    continue
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
                 if title:
                     results.append({"title": title, "snippet": snippet})
-    return results[:num_results]
+    return results[:limit]  # Only return the top 10 results.
 
 # ----------------------------
 # Function: Summarize Competitor Elements
@@ -99,7 +103,6 @@ def summarize_competitor_elements(results):
 # Function: Generate SEO Elements using OpenAI API
 # ----------------------------
 def generate_seo_elements(keyword, competitor_summary, openai_api_key, max_retries=3):
-    # Set the OpenAI API key for the session
     openai.api_key = openai_api_key
 
     prompt = f"""
@@ -178,14 +181,12 @@ Explanation:
 def create_word_document(results):
     doc = Document()
     doc.add_heading('SEO Element Generator Results', 0)
-    
     for result in results:
         doc.add_heading(f"Keyword: {result['Keyword']}", level=1)
         doc.add_paragraph(result['SEO Elements and Competitor Summary'])
         doc.add_heading("Competitor Analysis", level=2)
         doc.add_paragraph(result['Competitor Analysis'])
-        doc.add_paragraph("\n")  # Blank line between results
-    
+        doc.add_paragraph("\n")
     return doc
 
 # ----------------------------
@@ -198,7 +199,7 @@ if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username
         st.subheader(f"Results for: {keyword}")
         
         with st.spinner(f"Analyzing competitors for '{keyword}'..."):
-            competitor_results = scrape_google_results(keyword, dataforseo_username, dataforseo_password)
+            competitor_results = scrape_google_results(keyword, dataforseo_username, dataforseo_password, limit=10)
             competitor_summary = summarize_competitor_elements(competitor_results)
         
         with st.spinner(f"Generating SEO elements for '{keyword}'..."):
