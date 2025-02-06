@@ -62,7 +62,7 @@ def parse_seo_recommendations(gpt_text):
        Meta Description: ...
        Explanation:
        - ...
-    Adjust as necessary if GPT's format changes.
+    Adjust as necessary if GPT’s format changes.
     """
     lines = gpt_text.splitlines()
 
@@ -162,6 +162,8 @@ def summarize_competitor_elements(results):
     """
     Creates a summary of competitor results with average title/snippet length,
     common title words, and sample titles/snippets.
+
+    Now shows up to 'len(results)' snippets, ignoring blank ones, up to a max of 20.
     """
     if not results:
         return "No competitor results found. Unable to perform competitor analysis."
@@ -185,12 +187,16 @@ def summarize_competitor_elements(results):
     common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
     summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
 
+    # Show sample competitor titles (up to 5)
     summary += "Sample competitor titles:\n"
     for title in titles[:5]:
         summary += f"- {title}\n"
 
-    summary += "\nSample competitor snippets:\n"
-    for snippet in snippets[:5]:
+    # Show up to 20 non-blank snippets
+    non_blank_snippets = [s for s in snippets if s.strip()]
+    summary += "\nSample competitor snippets (omitting blanks):\n"
+    max_snippets_to_show = min(len(non_blank_snippets), 20)
+    for snippet in non_blank_snippets[:max_snippets_to_show]:
         snippet_preview = snippet[:100]
         if len(snippet) > 100:
             snippet_preview += "..."
