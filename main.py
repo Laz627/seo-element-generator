@@ -1,16 +1,23 @@
+import asyncio
+
+# Ensure an event loop exists in this thread.
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+import nest_asyncio
+nest_asyncio.apply()
+
 import streamlit as st
 import openai
 import requests
 import re
-import asyncio
-import nest_asyncio
+import time
 from urllib.parse import quote_plus
 from docx import Document
 from io import BytesIO
-import time
-
-# Allow nested event loops (needed for calling asyncio.run inside Streamlit)
-nest_asyncio.apply()
 
 # ----------------------------
 # Page Configuration & Title
@@ -46,12 +53,12 @@ model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
-    # The unsupported "num" field has been removed.
+    # Removed unsupported fields such as "num".
     payload = [{
         "keyword": keyword,
-        "language_code": "en",   # Adjust if needed.
-        "location_code": 2840,   # Example: 2840 corresponds to the United States.
-        "device": "desktop"      # Options: "desktop" or "mobile".
+        "language_code": "en",    # Adjust if needed.
+        "location_code": 2840,    # Example: 2840 corresponds to the United States.
+        "device": "desktop"       # Options: "desktop" or "mobile".
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
@@ -62,7 +69,7 @@ def scrape_google_results(keyword, username, password, limit=10):
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
-                # If the API includes a "type" field, include only organic items.
+                # If a "type" field exists, include only organic items.
                 if "type" in item and item["type"] != "organic":
                     continue
                 title = item.get("title", "")
