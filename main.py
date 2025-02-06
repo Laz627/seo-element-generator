@@ -1,21 +1,8 @@
-import asyncio
-
-# Ensure an event loop exists in this thread.
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-import nest_asyncio
-nest_asyncio.apply()
-
+import time
 import streamlit as st
 import openai
 import requests
 import re
-import time
-from urllib.parse import quote_plus
 from docx import Document
 from io import BytesIO
 
@@ -53,30 +40,28 @@ model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
-    # Removed unsupported fields such as "num".
     payload = [{
         "keyword": keyword,
-        "language_code": "en",    # Adjust if needed.
-        "location_code": 2840,    # Example: 2840 corresponds to the United States.
-        "device": "desktop"       # Options: "desktop" or "mobile".
+        "language_code": "en",  # Adjust if needed
+        "location_code": 2840,  # Example: 2840 = United States
+        "device": "desktop"     # Options: "desktop" or "mobile"
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
     data = response.json()
     
     results = []
-    # Loop through the returned data and filter for traditional organic items.
+    # Loop through returned data and filter for "organic" results
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
-                # If a "type" field exists, include only organic items.
                 if "type" in item and item["type"] != "organic":
                     continue
                 title = item.get("title", "")
                 snippet = item.get("snippet", "")
                 if title:
                     results.append({"title": title, "snippet": snippet})
-    return results[:limit]  # Only return the top 10 results.
+    return results[:limit]  # Return only top 'limit' results
 
 # ----------------------------
 # Function: Summarize Competitor Elements
@@ -85,24 +70,24 @@ def summarize_competitor_elements(results):
     if not results:
         return "No competitor results found. Unable to perform competitor analysis."
     
-    titles = [result["title"] for result in results]
-    snippets = [result["snippet"] for result in results]
+    titles = [r["title"] for r in results]
+    snippets = [r["snippet"] for r in results]
     
-    avg_title_length = sum(len(title) for title in titles) / len(titles)
-    avg_snippet_length = sum(len(snippet) for snippet in snippets) / len(snippets)
+    avg_title_length = sum(len(t) for t in titles) / len(titles)
+    avg_snippet_length = sum(len(s) for s in snippets) / len(snippets)
     
     summary = f"Analyzed {len(results)} competitor results.\n"
     summary += f"Average title length: {avg_title_length:.1f} characters.\n"
     summary += f"Average snippet length: {avg_snippet_length:.1f} characters.\n"
     
-    # Count word frequencies in titles (ignoring words shorter than 4 characters)
+    # Count word frequencies in titles (ignoring short words)
     word_freq = {}
     for title in titles:
         for word in re.findall(r'\w+', title.lower()):
             if len(word) > 3:
                 word_freq[word] = word_freq.get(word, 0) + 1
     common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
-    summary += f"Common words in titles: {', '.join([word for word, _ in common_words])}\n\n"
+    summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
     
     summary += "Sample competitor titles:\n"
     for title in titles[:5]:
@@ -115,9 +100,13 @@ def summarize_competitor_elements(results):
     return summary
 
 # ----------------------------
-# Function: Generate SEO Elements using OpenAI API (Async)
+# Function: Generate SEO Elements (Synchronous)
 # ----------------------------
 def generate_seo_elements(keyword, competitor_summary, openai_api_key, model_choice, max_retries=3):
+    """
+    Calls OpenAI's ChatCompletion.create() in a loop with retries.
+    This avoids the removed 'acreate' method in openai>=1.0.0.
+    """
     openai.api_key = openai_api_key
 
     prompt = f"""
@@ -173,26 +162,30 @@ Explanation:
 - [Point 2]
 ...
     """
-    
-    async def get_completion():
-        for attempt in range(max_retries):
-            try:
-                response = await openai.ChatCompletion.acreate(
-                    model=model_choice,  # Use GPT-4o or GPT-4o-mini as selected
-                    messages=[
-                        {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.3,
-                    timeout=60  # Increase timeout if necessary
-                )
-                return response.choices[0].message.content
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise e
-                await asyncio.sleep(2 ** attempt)
-    
-    return asyncio.run(get_completion())
+
+    for attempt in range(max_retries):
+        try:
+            response = openai.ChatCompletion.create(
+                model=model_choice,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an SEO expert tasked with creating optimized on-page elements "
+                            "that closely align with competitor trends."
+                        )
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                # For openai>=0.27.0, use request_timeout instead of timeout
+                request_timeout=60
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(2 ** attempt)
 
 # ----------------------------
 # Function: Create Word Document
@@ -218,11 +211,15 @@ if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username
         st.subheader(f"Results for: {keyword}")
         
         with st.spinner(f"Analyzing competitors for '{keyword}'..."):
-            competitor_results = scrape_google_results(keyword, dataforseo_username, dataforseo_password, limit=10)
+            competitor_results = scrape_google_results(
+                keyword, dataforseo_username, dataforseo_password, limit=10
+            )
             competitor_summary = summarize_competitor_elements(competitor_results)
         
         with st.spinner(f"Generating SEO elements for '{keyword}' using {model_choice}..."):
-            seo_elements = generate_seo_elements(keyword, competitor_summary, openai_api_key, model_choice)
+            seo_elements = generate_seo_elements(
+                keyword, competitor_summary, openai_api_key, model_choice
+            )
         
         st.write(seo_elements)
         st.write("Competitor Analysis Summary:")
