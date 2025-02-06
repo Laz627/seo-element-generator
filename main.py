@@ -39,29 +39,33 @@ model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
+    """
+    Pulls type=organic results and uses the 'description' field from DataForSEO.
+    """
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     payload = [{
         "keyword": keyword,
-        "language_code": "en",  # Adjust if needed
-        "location_code": 2840,  # Example: 2840 = United States
-        "device": "desktop"     # Options: "desktop" or "mobile"
+        "language_code": "en",    # Adjust if needed
+        "location_code": 2840,    # Example: 2840 = United States
+        "device": "desktop"       # "desktop" or "mobile"
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
     data = response.json()
     
     results = []
-    # Loop through returned data and filter for "organic" results
+    # Loop through returned data; only keep items of type=organic
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
-                if "type" in item and item["type"] != "organic":
-                    continue
-                title = item.get("title", "")
-                snippet = item.get("snippet", "")
-                if title:
-                    results.append({"title": title, "snippet": snippet})
-    return results[:limit]  # Return only top 'limit' results
+                # Filter strictly for organic results
+                if item.get("type") == "organic":
+                    title = item.get("title", "")
+                    # Use "description" instead of "snippet"
+                    snippet = item.get("description", "")
+                    if title:
+                        results.append({"title": title, "snippet": snippet})
+    return results[:limit]  # Return only the top 'limit' results
 
 # ----------------------------
 # Function: Summarize Competitor Elements
@@ -74,7 +78,7 @@ def summarize_competitor_elements(results):
     snippets = [r["snippet"] for r in results]
     
     avg_title_length = sum(len(t) for t in titles) / len(titles)
-    avg_snippet_length = sum(len(s) for s in snippets) / len(snippets)
+    avg_snippet_length = sum(len(s) for s in snippets) / len(snippets) if snippets else 0
     
     summary = f"Analyzed {len(results)} competitor results.\n"
     summary += f"Average title length: {avg_title_length:.1f} characters.\n"
@@ -105,7 +109,6 @@ def summarize_competitor_elements(results):
 def generate_seo_elements(keyword, competitor_summary, openai_api_key, model_choice, max_retries=3):
     """
     Calls OpenAI's ChatCompletion.create() in a loop with retries.
-    This avoids the removed 'acreate' method in openai>=1.0.0.
     """
     openai.api_key = openai_api_key
 
