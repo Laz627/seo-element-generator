@@ -180,7 +180,7 @@ Explanation:
                     },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.3,
+                temperature=0.5,
                 # For openai>=0.27.0, use request_timeout instead of timeout
                 request_timeout=60
             )
