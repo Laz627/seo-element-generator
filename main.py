@@ -1,8 +1,8 @@
 import time
+import re
 import streamlit as st
 import openai
 import requests
-import re
 from docx import Document
 from io import BytesIO
 
@@ -17,10 +17,11 @@ st.markdown("""
 ## How to use this app:
 1. Enter your OpenAI API key.
 2. Enter your DataForSEO credentials.
-3. Input up to 10 target keywords (one per line).
-4. Click **Generate SEO Elements** to get recommendations.
-5. Review the results and explanations.
-6. Download the results as a Word document.
+3. Select how many competitor results to analyze (10 or 20).
+4. Input up to 10 target keywords (one per line).
+5. Click **Generate SEO Elements** to get recommendations.
+6. Review the results and explanations.
+7. Download the results as a Word document.
 """)
 
 # ----------------------------
@@ -29,59 +30,99 @@ st.markdown("""
 openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
 dataforseo_username = st.text_input("Enter your DataForSEO username:")
 dataforseo_password = st.text_input("Enter your DataForSEO password:", type="password")
+
+# Let the user choose how many organic results to analyze.
+num_results = st.radio(
+    "How many competitor results would you like to analyze?",
+    (10, 20),
+    index=0,
+    horizontal=True
+)
+
 keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
 keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
 
-# Let the user choose which model to use.
+# Let the user choose which model to use
 model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"])
 
-# ----------------------------
-# Function: Display SEO Output (Parser for GPT text)
-# ----------------------------
-def display_seo_output(seo_text):
-    """
-    Parses lines to create a more structured layout in Streamlit:
-    - Lines ending with ":" become subheaders
-    - Lines starting with "-" become bullet points
-    - Everything else is displayed as normal text
-    """
-    lines = seo_text.splitlines()
-    bullet_buffer = []
 
-    def flush_bullets():
-        """Helper to flush the current bullet buffer to the screen."""
-        nonlocal bullet_buffer
-        for bullet in bullet_buffer:
-            st.markdown(f"- {bullet}")
-        bullet_buffer = []
+# ----------------------------
+# Function: Parse GPT's Output to Extract H1, Title Tag, Meta Description
+# ----------------------------
+def parse_seo_recommendations(gpt_text):
+    """
+    Extracts H1, Title Tag, and Meta Description (plus their explanations)
+    from the GPT output if it follows the structure:
+       H1: ...
+       Explanation:
+       - ...
+       Title Tag: ...
+       Explanation:
+       - ...
+       Meta Description: ...
+       Explanation:
+       - ...
+    Adjust as necessary if GPT's format changes.
+    """
+    lines = gpt_text.splitlines()
+
+    h1 = ""
+    h1_explanation = []
+    title = ""
+    title_explanation = []
+    meta = ""
+    meta_explanation = []
+
+    current_section = None
+    in_explanation = False
 
     for line in lines:
-        line = line.strip()
-        # If line is empty, skip or flush bullets
-        if not line:
-            if bullet_buffer:
-                flush_bullets()
+        stripped = line.strip()
+
+        # Detect "H1:"
+        if stripped.startswith("H1:"):
+            h1 = stripped[len("H1:"):].strip()
+            current_section = "h1"
+            in_explanation = False
             continue
 
-        # Check if line is a subheader (ends with a colon and not a bullet)
-        if line.endswith(":") and not line.startswith("-"):
-            # Flush any pending bullets before new section
-            if bullet_buffer:
-                flush_bullets()
-            st.subheader(line)
-        elif line.startswith("-"):
-            # It's a bullet line
-            bullet_text = line.lstrip("-").strip()
-            bullet_buffer.append(bullet_text)
-        else:
-            # Normal text line
-            if bullet_buffer:
-                flush_bullets()
-            st.write(line)
+        # Detect "Title Tag:"
+        if stripped.startswith("Title Tag:"):
+            title = stripped[len("Title Tag:"):].strip()
+            current_section = "title"
+            in_explanation = False
+            continue
 
-    # Flush any leftover bullets
-    if bullet_buffer:
-        flush_bullets()
+        # Detect "Meta Description:"
+        if stripped.startswith("Meta Description:"):
+            meta = stripped[len("Meta Description:"):].strip()
+            current_section = "meta"
+            in_explanation = False
+            continue
+
+        # Detect "Explanation:"
+        if stripped.startswith("Explanation:"):
+            in_explanation = True
+            continue
+
+        # Collect explanations if in_explanation = True
+        if in_explanation:
+            if current_section == "h1":
+                h1_explanation.append(stripped)
+            elif current_section == "title":
+                title_explanation.append(stripped)
+            elif current_section == "meta":
+                meta_explanation.append(stripped)
+
+    return {
+        "H1": h1,
+        "H1_explanation": "\n".join(h1_explanation),
+        "Title": title,
+        "Title_explanation": "\n".join(title_explanation),
+        "Meta": meta,
+        "Meta_explanation": "\n".join(meta_explanation)
+    }
+
 
 # ----------------------------
 # Function: DataForSEO Google SERP Scraper
@@ -94,14 +135,14 @@ def scrape_google_results(keyword, username, password, limit=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     payload = [{
         "keyword": keyword,
-        "language_code": "en",    # Adjust if needed
-        "location_code": 2840,    # Example: 2840 = United States
-        "device": "desktop"       # "desktop" or "mobile"
+        "language_code": "en",
+        "location_code": 2840,  # e.g. 2840 = United States
+        "device": "desktop"
     }]
-    
+
     response = requests.post(url, auth=(username, password), json=payload)
     data = response.json()
-    
+
     results = []
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
@@ -113,6 +154,7 @@ def scrape_google_results(keyword, username, password, limit=10):
                         results.append({"title": title, "snippet": snippet})
     return results[:limit]
 
+
 # ----------------------------
 # Function: Summarize Competitor Elements
 # ----------------------------
@@ -123,18 +165,17 @@ def summarize_competitor_elements(results):
     """
     if not results:
         return "No competitor results found. Unable to perform competitor analysis."
-    
+
     titles = [r["title"] for r in results]
     snippets = [r["snippet"] for r in results]
-    
-    # Calculate average lengths safely
+
     avg_title_length = sum(len(t) for t in titles) / len(titles) if titles else 0
     avg_snippet_length = sum(len(s) for s in snippets) / len(snippets) if snippets else 0
-    
+
     summary = f"Analyzed {len(results)} competitor results.\n"
     summary += f"Average title length: {avg_title_length:.1f} characters.\n"
     summary += f"Average snippet length: {avg_snippet_length:.1f} characters.\n"
-    
+
     # Count word frequencies in titles (ignoring words < 4 chars)
     word_freq = {}
     for title in titles:
@@ -143,18 +184,20 @@ def summarize_competitor_elements(results):
                 word_freq[word] = word_freq.get(word, 0) + 1
     common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
     summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
-    
+
     summary += "Sample competitor titles:\n"
     for title in titles[:5]:
         summary += f"- {title}\n"
-    
+
     summary += "\nSample competitor snippets:\n"
     for snippet in snippets[:5]:
-        # Only display first ~100 chars for brevity
-        snippet_preview = snippet[:100] + ("..." if len(snippet) > 100 else "")
+        snippet_preview = snippet[:100]
+        if len(snippet) > 100:
+            snippet_preview += "..."
         summary += f"- {snippet_preview}\n"
-    
+
     return summary
+
 
 # ----------------------------
 # Function: Generate SEO Elements (Synchronous)
@@ -174,7 +217,7 @@ Requirements:
 - Avoid buzzwords and branded terms.
 - Include an exact match or close variation of the target keyword.
 - Closely align with the competitor results provided below.
-- The elements should be a summarization of common elements from the top 10 competitors.
+- The elements should be a summarization of common elements from the top competitors.
 
 Competitor analysis:
 {competitor_summary}
@@ -234,7 +277,6 @@ Explanation:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                # For openai>=0.27.0, use request_timeout instead of timeout
                 request_timeout=60
             )
             return response.choices[0].message.content
@@ -242,6 +284,7 @@ Explanation:
             if attempt == max_retries - 1:
                 raise e
             time.sleep(2 ** attempt)
+
 
 # ----------------------------
 # Function: Create Word Document
@@ -260,40 +303,77 @@ def create_word_document(results):
         doc.add_paragraph("\n")
     return doc
 
+
 # ----------------------------
 # Main Application Logic
 # ----------------------------
-if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username and dataforseo_password and keyword_list:
+if st.button("Generate SEO Elements") \
+   and openai_api_key \
+   and dataforseo_username \
+   and dataforseo_password \
+   and keyword_list:
+
     results = []
-    
+
     for keyword in keyword_list[:10]:
         st.subheader(f"Results for: {keyword}")
-        
-        with st.spinner(f"Analyzing competitors for '{keyword}'..."):
+
+        with st.spinner(f"Analyzing competitors (top {num_results}) for '{keyword}'..."):
             competitor_results = scrape_google_results(
-                keyword, dataforseo_username, dataforseo_password, limit=10
+                keyword,
+                dataforseo_username,
+                dataforseo_password,
+                limit=num_results
             )
             competitor_summary = summarize_competitor_elements(competitor_results)
-        
+
         with st.spinner(f"Generating SEO elements for '{keyword}' using {model_choice}..."):
             seo_elements = generate_seo_elements(
-                keyword, competitor_summary, openai_api_key, model_choice
+                keyword,
+                competitor_summary,
+                openai_api_key,
+                model_choice
             )
-        
-        # Display results in a more structured way
-        with st.expander("SEO Elements"):
-            display_seo_output(seo_elements)
 
+        # -- PARSE GPT OUTPUT INTO COMPONENT PARTS --
+        parsed = parse_seo_recommendations(seo_elements)
+
+        # -- DISPLAY GPT OUTPUT IN A STRUCTURED WAY --
+        # Full GPT text in an expander (for context)
+        with st.expander("Full GPT Output (SEO Elements & Explanation)"):
+            st.markdown(f"```\n{seo_elements}\n```")
+
+        # Separate dropdown for the main on-page recommendations
+        with st.expander("Quick Reference: Recommended On-Page Elements"):
+            st.subheader("H1")
+            st.write(parsed["H1"])
+            if parsed["H1_explanation"]:
+                st.markdown("**Explanation:**")
+                st.markdown(parsed["H1_explanation"].replace("\n", "\n\n"))
+
+            st.subheader("Title Tag")
+            st.write(parsed["Title"])
+            if parsed["Title_explanation"]:
+                st.markdown("**Explanation:**")
+                st.markdown(parsed["Title_explanation"].replace("\n", "\n\n"))
+
+            st.subheader("Meta Description")
+            st.write(parsed["Meta"])
+            if parsed["Meta_explanation"]:
+                st.markdown("**Explanation:**")
+                st.markdown(parsed["Meta_explanation"].replace("\n", "\n\n"))
+
+        # Competitor analysis in another expander
         with st.expander("Competitor Analysis Summary"):
-            display_seo_output(competitor_summary)
-        
-        # Add final result for Word doc download
+            st.markdown(f"```\n{competitor_summary}\n```")
+
+        # Add final result for Word doc creation
         results.append({
             "Keyword": keyword,
             "SEO Elements and Competitor Summary": seo_elements,
             "Competitor Analysis": competitor_summary
         })
-    
+
     # Create and offer the Word document download
     doc = create_word_document(results)
     bio = BytesIO()
@@ -304,5 +384,6 @@ if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username
         file_name="seo_elements_results.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
 else:
     st.write("Please enter your OpenAI API key, DataForSEO credentials, and at least one keyword to generate SEO elements.")
