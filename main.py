@@ -163,7 +163,9 @@ def summarize_competitor_elements(results):
     Creates a summary of competitor results with average title/snippet length,
     common title words, and sample titles/snippets.
 
-    Now shows up to 'len(results)' snippets, ignoring blank ones, up to a max of 20.
+    - Shows up to 20 titles.
+    - Shows up to 20 non-blank snippets.
+    - Truncates snippets to ~100 characters for readability.
     """
     if not results:
         return "No competitor results found. Unable to perform competitor analysis."
@@ -187,15 +189,16 @@ def summarize_competitor_elements(results):
     common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
     summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
 
-    # Show sample competitor titles (up to 5)
+    # -- Up to 20 titles --
+    max_titles_to_show = min(len(titles), 20)
     summary += "Sample competitor titles:\n"
-    for title in titles[:5]:
+    for title in titles[:max_titles_to_show]:
         summary += f"- {title}\n"
 
-    # Show up to 20 non-blank snippets
+    # -- Up to 20 non-blank snippets --
     non_blank_snippets = [s for s in snippets if s.strip()]
-    summary += "\nSample competitor snippets (omitting blanks):\n"
     max_snippets_to_show = min(len(non_blank_snippets), 20)
+    summary += "\nSample competitor snippets (omitting blanks):\n"
     for snippet in non_blank_snippets[:max_snippets_to_show]:
         snippet_preview = snippet[:100]
         if len(snippet) > 100:
@@ -203,7 +206,6 @@ def summarize_competitor_elements(results):
         summary += f"- {snippet_preview}\n"
 
     return summary
-
 
 # ----------------------------
 # Function: Generate SEO Elements (Synchronous)
