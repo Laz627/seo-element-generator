@@ -39,33 +39,67 @@ model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
-    """
-    Pulls type=organic results and uses the 'description' field from DataForSEO.
-    """
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     payload = [{
         "keyword": keyword,
         "language_code": "en",    # Adjust if needed
         "location_code": 2840,    # Example: 2840 = United States
-        "device": "desktop"       # "desktop" or "mobile"
+        "device": "desktop"
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
     data = response.json()
     
     results = []
-    # Loop through returned data; only keep items of type=organic
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
-                # Filter strictly for organic results
                 if item.get("type") == "organic":
-                    title = item.get("title", "")
-                    # Use "description" instead of "snippet"
-                    snippet = item.get("description", "")
-                    if title:
+                    # Always convert None to empty strings:
+                    title = item.get("title") or ""
+                    snippet = item.get("description") or ""
+                    if title:  # If there's a valid title (non-empty)
                         results.append({"title": title, "snippet": snippet})
-    return results[:limit]  # Return only the top 'limit' results
+    return results[:limit]
+
+def summarize_competitor_elements(results):
+    if not results:
+        return "No competitor results found. Unable to perform competitor analysis."
+    
+    titles = [r["title"] for r in results]
+    snippets = [r["snippet"] for r in results]
+
+    # Handle the possibility of an empty list (unlikely after the above check, 
+    # but just in case)
+    if not titles:
+        return "No valid titles returned for competitor analysis."
+
+    avg_title_length = sum(len(t) for t in titles) / len(titles)
+    # Similarly, if you want to be extra safe, you could check if len(snippets) > 0
+    avg_snippet_length = sum(len(s) for s in snippets) / len(snippets)
+
+    summary = f"Analyzed {len(results)} competitor results.\n"
+    summary += f"Average title length: {avg_title_length:.1f} characters.\n"
+    summary += f"Average snippet length: {avg_snippet_length:.1f} characters.\n"
+    
+    # Count word frequencies in titles (ignoring short words)
+    word_freq = {}
+    for title in titles:
+        for word in re.findall(r'\w+', title.lower()):
+            if len(word) > 3:
+                word_freq[word] = word_freq.get(word, 0) + 1
+    common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
+    summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
+    
+    summary += "Sample competitor titles:\n"
+    for title in titles[:5]:
+        summary += f"- {title}\n"
+    
+    summary += "\nSample competitor snippets:\n"
+    for snippet in snippets[:5]:
+        summary += f"- {snippet[:100]}...\n"
+    
+    return summary
 
 # ----------------------------
 # Function: Summarize Competitor Elements
