@@ -17,20 +17,26 @@ st.write("Created by Brandon Lazovic")
 st.markdown("""
 ## How to use this app:
 1. Enter your OpenAI API key.
-2. Input up to 10 target keywords (one per line).
-3. Click **Generate SEO Elements** to get recommendations.
-4. Review the results and explanations.
-5. Download the results as a Word document.
+2. Enter your DataForSEO credentials.
+3. Input up to 10 target keywords (one per line).
+4. Click **Generate SEO Elements** to get recommendations.
+5. Review the results and explanations.
+6. Download the results as a Word document.
 """)
+
+# ----------------------------
+# User Inputs for Credentials and Keywords
+# ----------------------------
+openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
+dataforseo_username = st.text_input("Enter your DataForSEO username:")
+dataforseo_password = st.text_input("Enter your DataForSEO password:", type="password")
+keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
+keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
 
 # ----------------------------
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
-def scrape_google_results(keyword, num_results=10):
-    # DataForSEO API credentials – replace these with your actual credentials
-    username = "YOUR_USERNAME"
-    password = "YOUR_PASSWORD"
-    
+def scrape_google_results(keyword, username, password, num_results=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     payload = [{
         "keyword": keyword,
@@ -153,7 +159,7 @@ Explanation:
     for attempt in range(max_retries):
         try:
             response = openai.ChatCompletion.create(
-                model="gpt-4",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
                     {"role": "user", "content": prompt}
@@ -183,20 +189,16 @@ def create_word_document(results):
     return doc
 
 # ----------------------------
-# Streamlit User Inputs & App Flow
+# Main Application Logic
 # ----------------------------
-openai_api_key = st.text_input("Enter your OpenAI API key:", type="password")
-keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
-keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
-
-if st.button("Generate SEO Elements") and openai_api_key and keyword_list:
+if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username and dataforseo_password and keyword_list:
     results = []
     
     for keyword in keyword_list[:10]:
         st.subheader(f"Results for: {keyword}")
         
         with st.spinner(f"Analyzing competitors for '{keyword}'..."):
-            competitor_results = scrape_google_results(keyword)
+            competitor_results = scrape_google_results(keyword, dataforseo_username, dataforseo_password)
             competitor_summary = summarize_competitor_elements(competitor_results)
         
         with st.spinner(f"Generating SEO elements for '{keyword}'..."):
@@ -223,4 +225,4 @@ if st.button("Generate SEO Elements") and openai_api_key and keyword_list:
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 else:
-    st.write("Please enter your OpenAI API key and at least one keyword to generate SEO elements.")
+    st.write("Please enter your OpenAI API key, DataForSEO credentials, and at least one keyword to generate SEO elements.")
