@@ -1,4 +1,4 @@
 streamlit==1.42.0
-openai==0.28
+openai @ git+https://github.com/openai/openai-python.git
 requests>=2.28.0
 python-docx>=0.8.11
