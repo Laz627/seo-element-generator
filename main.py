@@ -36,15 +36,67 @@ keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
 model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"])
 
 # ----------------------------
+# Function: Display SEO Output (Parser for GPT text)
+# ----------------------------
+def display_seo_output(seo_text):
+    """
+    Parses lines to create a more structured layout in Streamlit:
+    - Lines ending with ":" become subheaders
+    - Lines starting with "-" become bullet points
+    - Everything else is displayed as normal text
+    """
+    lines = seo_text.splitlines()
+    bullet_buffer = []
+
+    def flush_bullets():
+        """Helper to flush the current bullet buffer to the screen."""
+        nonlocal bullet_buffer
+        for bullet in bullet_buffer:
+            st.markdown(f"- {bullet}")
+        bullet_buffer = []
+
+    for line in lines:
+        line = line.strip()
+        # If line is empty, skip or flush bullets
+        if not line:
+            if bullet_buffer:
+                flush_bullets()
+            continue
+
+        # Check if line is a subheader (ends with a colon and not a bullet)
+        if line.endswith(":") and not line.startswith("-"):
+            # Flush any pending bullets before new section
+            if bullet_buffer:
+                flush_bullets()
+            st.subheader(line)
+        elif line.startswith("-"):
+            # It's a bullet line
+            bullet_text = line.lstrip("-").strip()
+            bullet_buffer.append(bullet_text)
+        else:
+            # Normal text line
+            if bullet_buffer:
+                flush_bullets()
+            st.write(line)
+
+    # Flush any leftover bullets
+    if bullet_buffer:
+        flush_bullets()
+
+# ----------------------------
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
+    """
+    Pulls type=organic results and uses the 'description' field from DataForSEO,
+    converting None to '' to avoid errors.
+    """
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
     payload = [{
         "keyword": keyword,
         "language_code": "en",    # Adjust if needed
         "location_code": 2840,    # Example: 2840 = United States
-        "device": "desktop"
+        "device": "desktop"       # "desktop" or "mobile"
     }]
     
     response = requests.post(url, auth=(username, password), json=payload)
@@ -55,70 +107,35 @@ def scrape_google_results(keyword, username, password, limit=10):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
                 if item.get("type") == "organic":
-                    # Always convert None to empty strings:
                     title = item.get("title") or ""
                     snippet = item.get("description") or ""
-                    if title:  # If there's a valid title (non-empty)
+                    if title:
                         results.append({"title": title, "snippet": snippet})
     return results[:limit]
-
-def summarize_competitor_elements(results):
-    if not results:
-        return "No competitor results found. Unable to perform competitor analysis."
-    
-    titles = [r["title"] for r in results]
-    snippets = [r["snippet"] for r in results]
-
-    # Handle the possibility of an empty list (unlikely after the above check, 
-    # but just in case)
-    if not titles:
-        return "No valid titles returned for competitor analysis."
-
-    avg_title_length = sum(len(t) for t in titles) / len(titles)
-    # Similarly, if you want to be extra safe, you could check if len(snippets) > 0
-    avg_snippet_length = sum(len(s) for s in snippets) / len(snippets)
-
-    summary = f"Analyzed {len(results)} competitor results.\n"
-    summary += f"Average title length: {avg_title_length:.1f} characters.\n"
-    summary += f"Average snippet length: {avg_snippet_length:.1f} characters.\n"
-    
-    # Count word frequencies in titles (ignoring short words)
-    word_freq = {}
-    for title in titles:
-        for word in re.findall(r'\w+', title.lower()):
-            if len(word) > 3:
-                word_freq[word] = word_freq.get(word, 0) + 1
-    common_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)[:5]
-    summary += f"Common words in titles: {', '.join([w for w, _ in common_words])}\n\n"
-    
-    summary += "Sample competitor titles:\n"
-    for title in titles[:5]:
-        summary += f"- {title}\n"
-    
-    summary += "\nSample competitor snippets:\n"
-    for snippet in snippets[:5]:
-        summary += f"- {snippet[:100]}...\n"
-    
-    return summary
 
 # ----------------------------
 # Function: Summarize Competitor Elements
 # ----------------------------
 def summarize_competitor_elements(results):
+    """
+    Creates a summary of competitor results with average title/snippet length,
+    common title words, and sample titles/snippets.
+    """
     if not results:
         return "No competitor results found. Unable to perform competitor analysis."
     
     titles = [r["title"] for r in results]
     snippets = [r["snippet"] for r in results]
     
-    avg_title_length = sum(len(t) for t in titles) / len(titles)
+    # Calculate average lengths safely
+    avg_title_length = sum(len(t) for t in titles) / len(titles) if titles else 0
     avg_snippet_length = sum(len(s) for s in snippets) / len(snippets) if snippets else 0
     
     summary = f"Analyzed {len(results)} competitor results.\n"
     summary += f"Average title length: {avg_title_length:.1f} characters.\n"
     summary += f"Average snippet length: {avg_snippet_length:.1f} characters.\n"
     
-    # Count word frequencies in titles (ignoring short words)
+    # Count word frequencies in titles (ignoring words < 4 chars)
     word_freq = {}
     for title in titles:
         for word in re.findall(r'\w+', title.lower()):
@@ -133,7 +150,9 @@ def summarize_competitor_elements(results):
     
     summary += "\nSample competitor snippets:\n"
     for snippet in snippets[:5]:
-        summary += f"- {snippet[:100]}...\n"
+        # Only display first ~100 chars for brevity
+        snippet_preview = snippet[:100] + ("..." if len(snippet) > 100 else "")
+        summary += f"- {snippet_preview}\n"
     
     return summary
 
@@ -214,7 +233,7 @@ Explanation:
                     },
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.5,
+                temperature=0.3,
                 # For openai>=0.27.0, use request_timeout instead of timeout
                 request_timeout=60
             )
@@ -228,6 +247,9 @@ Explanation:
 # Function: Create Word Document
 # ----------------------------
 def create_word_document(results):
+    """
+    Creates a Word doc summarizing each keyword's SEO elements and competitor analysis.
+    """
     doc = Document()
     doc.add_heading('SEO Element Generator Results', 0)
     for result in results:
@@ -258,10 +280,14 @@ if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username
                 keyword, competitor_summary, openai_api_key, model_choice
             )
         
-        st.write(seo_elements)
-        st.write("Competitor Analysis Summary:")
-        st.write(competitor_summary)
+        # Display results in a more structured way
+        with st.expander("SEO Elements"):
+            display_seo_output(seo_elements)
+
+        with st.expander("Competitor Analysis Summary"):
+            display_seo_output(competitor_summary)
         
+        # Add final result for Word doc download
         results.append({
             "Keyword": keyword,
             "SEO Elements and Competitor Summary": seo_elements,
