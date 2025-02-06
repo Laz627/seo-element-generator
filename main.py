@@ -2,10 +2,15 @@ import streamlit as st
 import openai
 import requests
 import re
+import asyncio
+import nest_asyncio
 from urllib.parse import quote_plus
 from docx import Document
 from io import BytesIO
 import time
+
+# Allow nested event loops (needed for calling asyncio.run inside Streamlit)
+nest_asyncio.apply()
 
 # ----------------------------
 # Page Configuration & Title
@@ -33,12 +38,15 @@ dataforseo_password = st.text_input("Enter your DataForSEO password:", type="pas
 keywords = st.text_area("Enter up to 10 target keywords (one per line):", height=200)
 keyword_list = [k.strip() for k in keywords.split("\n") if k.strip()]
 
+# Let the user choose which model to use.
+model_choice = st.selectbox("Select the OpenAI model:", ["gpt-4o", "gpt-4o-mini"])
+
 # ----------------------------
 # Function: DataForSEO Google SERP Scraper
 # ----------------------------
 def scrape_google_results(keyword, username, password, limit=10):
     url = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced"
-    # Removed the unsupported "num" field.
+    # The unsupported "num" field has been removed.
     payload = [{
         "keyword": keyword,
         "language_code": "en",   # Adjust if needed.
@@ -54,7 +62,7 @@ def scrape_google_results(keyword, username, password, limit=10):
     for task in data.get("tasks", []):
         for result_item in task.get("result", []):
             for item in result_item.get("items", []):
-                # If the API includes a type field, include only organic items.
+                # If the API includes a "type" field, include only organic items.
                 if "type" in item and item["type"] != "organic":
                     continue
                 title = item.get("title", "")
@@ -100,9 +108,9 @@ def summarize_competitor_elements(results):
     return summary
 
 # ----------------------------
-# Function: Generate SEO Elements using OpenAI API
+# Function: Generate SEO Elements using OpenAI API (Async)
 # ----------------------------
-def generate_seo_elements(keyword, competitor_summary, openai_api_key, max_retries=3):
+def generate_seo_elements(keyword, competitor_summary, openai_api_key, model_choice, max_retries=3):
     openai.api_key = openai_api_key
 
     prompt = f"""
@@ -159,21 +167,25 @@ Explanation:
 ...
     """
     
-    for attempt in range(max_retries):
-        try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise
-            time.sleep(2 ** attempt)  # Exponential backoff
+    async def get_completion():
+        for attempt in range(max_retries):
+            try:
+                response = await openai.ChatCompletion.acreate(
+                    model=model_choice,  # Use GPT-4o or GPT-4o-mini as selected
+                    messages=[
+                        {"role": "system", "content": "You are an SEO expert tasked with creating optimized on-page elements that closely align with competitor trends."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.3,
+                    timeout=60  # Increase timeout if necessary
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                await asyncio.sleep(2 ** attempt)
+    
+    return asyncio.run(get_completion())
 
 # ----------------------------
 # Function: Create Word Document
@@ -202,8 +214,8 @@ if st.button("Generate SEO Elements") and openai_api_key and dataforseo_username
             competitor_results = scrape_google_results(keyword, dataforseo_username, dataforseo_password, limit=10)
             competitor_summary = summarize_competitor_elements(competitor_results)
         
-        with st.spinner(f"Generating SEO elements for '{keyword}'..."):
-            seo_elements = generate_seo_elements(keyword, competitor_summary, openai_api_key)
+        with st.spinner(f"Generating SEO elements for '{keyword}' using {model_choice}..."):
+            seo_elements = generate_seo_elements(keyword, competitor_summary, openai_api_key, model_choice)
         
         st.write(seo_elements)
         st.write("Competitor Analysis Summary:")
